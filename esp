@@ -1,0 +1,202 @@
+-- settings
+local settings = {
+    defaultcolor = Color3.fromRGB(255, 0, 0), -- Default red
+    forcefieldcolor = Color3.fromRGB(0, 0, 255), -- Blue for ForceField material
+    wantedColors = {
+        [1] = Color3.fromRGB(0, 255, 0),   -- Green (Wanted Level 1)
+        [2] = Color3.fromRGB(255, 255, 0), -- Yellow (Wanted Level 2)
+        [3] = Color3.fromRGB(255, 0, 0)    -- Red (Wanted Level 3)
+    }
+}
+
+-- services
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+
+-- variables
+local localPlayer = players.LocalPlayer
+local camera = workspace.CurrentCamera
+local espCache = {}
+
+-- helper functions
+local newVector2, newDrawing = Vector2.new, Drawing.new
+local tan, rad = math.tan, math.rad
+local round = function(...) local a = {}; for i, v in next, table.pack(...) do a[i] = math.round(v); end return unpack(a); end
+local wtvp = function(...) local a, b = camera.WorldToViewportPoint(camera, ...) return newVector2(a.X, a.Y), b, a.Z end
+
+-- create ESP elements for a player
+local function createEsp(player)
+    local drawings = {}
+
+    drawings.box = newDrawing("Square")
+    drawings.box.Thickness = 1
+    drawings.box.Filled = false
+    drawings.box.Color = settings.defaultcolor
+    drawings.box.Visible = false
+    drawings.box.ZIndex = 2
+
+    drawings.boxoutline = newDrawing("Square")
+    drawings.boxoutline.Thickness = 3
+    drawings.boxoutline.Filled = false
+    drawings.boxoutline.Color = Color3.new(0, 0, 0)
+    drawings.boxoutline.Visible = false
+    drawings.boxoutline.ZIndex = 1
+
+    drawings.name = newDrawing("Text")
+    drawings.name.Center = true
+    drawings.name.Outline = true
+    drawings.name.Color = Color3.new(1, 1, 1)
+    drawings.name.Visible = false
+
+    drawings.tool = newDrawing("Text")
+    drawings.tool.Center = true
+    drawings.tool.Outline = true
+    drawings.tool.Color = Color3.new(1, 1, 1)
+    drawings.tool.Visible = false
+
+    drawings.health = newDrawing("Text")
+    drawings.health.Center = true
+    drawings.health.Outline = true
+    drawings.health.Visible = false
+
+    espCache[player] = drawings
+end
+
+-- remove ESP for a player
+local function removeEsp(player)
+    if espCache[player] then
+        for _, drawing in next, espCache[player] do
+            drawing:Remove()
+        end
+        espCache[player] = nil
+    end
+end
+
+-- hide ESP elements for a player
+local function hideEsp(drawings)
+    for _, drawing in next, drawings do
+        drawing.Visible = false
+    end
+end
+
+-- update ESP for a player
+local function updateEsp(player, esp)
+    local character = player and player.Character
+    local localCharacter = localPlayer.Character
+
+    if character and localCharacter and localCharacter.PrimaryPart then
+        local cframe = character:GetModelCFrame()
+        local localPosition = localCharacter.PrimaryPart.Position
+        local position, visible, depth = wtvp(cframe.Position)
+
+        local distance = (localPosition - cframe.Position).Magnitude
+
+        if distance <= 250 and visible then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local wanted = workspace:FindFirstChild(player.Name) and workspace[player.Name]:FindFirstChild("Wanted")
+            local tool = character:FindFirstChildOfClass("Tool") -- ✅ Now only checking equipped tools
+
+            if humanoid and humanoid.Health > 0 then
+                esp.box.Visible = true
+                esp.boxoutline.Visible = true
+                esp.name.Visible = true
+                esp.health.Visible = true
+                esp.tool.Visible = tool ~= nil -- ✅ Tool text is only shown if a tool is equipped
+
+                local x, y = round(position.X, position.Y)
+                local width, height = round(4 / depth * 1000, 5 / depth * 1000)
+
+                -- ✅ Wanted Level color check
+                local wantedLevel = wanted and wanted:IsA("NumberValue") and math.floor(wanted.Value) or 0
+                esp.box.Color = settings.wantedColors[wantedLevel] or settings.defaultcolor
+
+                esp.box.Size = newVector2(width, height)
+                esp.box.Position = newVector2(round(x - width / 2, y - height / 2))
+                esp.boxoutline.Size = esp.box.Size
+                esp.boxoutline.Position = esp.box.Position
+
+                -- ✅ Display player name
+                esp.name.Size = math.clamp(math.round(height / 10), 10, 20)
+                esp.name.Text = player.Name
+                esp.name.Position = newVector2(x, y - height / 2 - 15)
+
+                -- ✅ Display tool name or hide if none
+                if tool then
+                    esp.tool.Size = esp.name.Size - 2
+                    esp.tool.Text = tool.Name
+                    esp.tool.Position = newVector2(x, y + height / 2 + 5)
+                    esp.tool.Visible = true
+                else
+                    esp.tool.Visible = false
+                end
+
+                -- ✅ Display Health as text
+                local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                esp.health.Size = esp.name.Size - 2
+                esp.health.Text = string.format("%.0f HP", humanoid.Health)
+                esp.health.Position = newVector2(x, y + height / 2 + 20)
+
+                -- ✅ Smooth health color transition (Green → Yellow → Red)
+                esp.health.Color = Color3.fromRGB(
+                    math.clamp(255 * (1 - healthPercent), 0, 255), -- Red increases as health decreases
+                    math.clamp(255 * healthPercent, 0, 255),       -- Green decreases as health decreases
+                    0                                              -- No blue
+                )
+            else
+                hideEsp(esp)
+            end
+        else
+            hideEsp(esp)
+        end
+    else
+        hideEsp(esp)
+    end
+end
+
+-- reset ESP elements
+local function resetEsp()
+    for player, drawings in pairs(espCache) do
+        removeEsp(player)
+    end
+
+    for _, player in next, players:GetPlayers() do
+        if player ~= localPlayer then
+            createEsp(player)
+        end
+    end
+end
+
+-- main
+for _, player in next, players:GetPlayers() do
+    if player ~= localPlayer then
+        createEsp(player)
+    end
+end
+
+players.PlayerAdded:Connect(function(player)
+    createEsp(player)
+    player.CharacterAdded:Connect(function()
+        createEsp(player)
+    end)
+end)
+
+players.PlayerRemoving:Connect(function(player)
+    removeEsp(player)
+end)
+
+runService:BindToRenderStep("esp", Enum.RenderPriority.Camera.Value, function()
+    for player, drawings in next, espCache do
+        if drawings and player ~= localPlayer then
+            updateEsp(player, drawings)
+        end
+    end
+end)
+
+-- keybind to reset ESP
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.E and userInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+        resetEsp()
+    end
+end)
