@@ -6,6 +6,11 @@ local settings = {
         [1] = Color3.fromRGB(0, 255, 0),   -- Green (Wanted Level 1)
         [2] = Color3.fromRGB(255, 255, 0), -- Yellow (Wanted Level 2)
         [3] = Color3.fromRGB(255, 0, 0)    -- Red (Wanted Level 3)
+    },
+    whitelist = {   -- Whitelisted players (Add names here)
+        "Aruzalig",
+        "cubonesansdalt",
+        "MorvidFalce"
     }
 }
 
@@ -24,6 +29,16 @@ local newVector2, newDrawing = Vector2.new, Drawing.new
 local tan, rad = math.tan, math.rad
 local round = function(...) local a = {}; for i, v in next, table.pack(...) do a[i] = math.round(v); end return unpack(a); end
 local wtvp = function(...) local a, b = camera.WorldToViewportPoint(camera, ...) return newVector2(a.X, a.Y), b, a.Z end
+
+-- function to check if a player is in the whitelist
+local function isWhitelisted(player)
+    for _, name in ipairs(settings.whitelist) do
+        if player.Name == name then
+            return true
+        end
+    end
+    return false
+end
 
 -- create ESP elements for a player
 local function createEsp(player)
@@ -95,21 +110,26 @@ local function updateEsp(player, esp)
         if distance <= 250 and visible then
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             local wanted = workspace:FindFirstChild(player.Name) and workspace[player.Name]:FindFirstChild("Wanted")
-            local tool = character:FindFirstChildOfClass("Tool") -- ✅ Now only checking equipped tools
+            local tool = character:FindFirstChildOfClass("Tool")
 
             if humanoid and humanoid.Health > 0 then
                 esp.box.Visible = true
                 esp.boxoutline.Visible = true
                 esp.name.Visible = true
                 esp.health.Visible = true
-                esp.tool.Visible = tool ~= nil -- ✅ Tool text is only shown if a tool is equipped
+                esp.tool.Visible = tool ~= nil
 
                 local x, y = round(position.X, position.Y)
                 local width, height = round(4 / depth * 1000, 5 / depth * 1000)
 
-                -- ✅ Wanted Level color check
-                local wantedLevel = wanted and wanted:IsA("NumberValue") and math.floor(wanted.Value) or 0
-                esp.box.Color = settings.wantedColors[wantedLevel] or settings.defaultcolor
+                -- ✅ Check if player is whitelisted (Blue box for whitelisted players)
+                if isWhitelisted(player) then
+                    esp.box.Color = Color3.fromRGB(0, 0, 255) -- Blue for whitelisted players
+                else
+                    -- Otherwise, check for wanted level
+                    local wantedLevel = wanted and wanted:IsA("NumberValue") and math.floor(wanted.Value) or 0
+                    esp.box.Color = settings.wantedColors[wantedLevel] or settings.defaultcolor
+                end
 
                 esp.box.Size = newVector2(width, height)
                 esp.box.Position = newVector2(round(x - width / 2, y - height / 2))
@@ -139,9 +159,9 @@ local function updateEsp(player, esp)
 
                 -- ✅ Smooth health color transition (Green → Yellow → Red)
                 esp.health.Color = Color3.fromRGB(
-                    math.clamp(255 * (1 - healthPercent), 0, 255), -- Red increases as health decreases
-                    math.clamp(255 * healthPercent, 0, 255),       -- Green decreases as health decreases
-                    0                                              -- No blue
+                    math.clamp(255 * (1 - healthPercent), 0, 255),
+                    math.clamp(255 * healthPercent, 0, 255),
+                    0
                 )
             else
                 hideEsp(esp)
